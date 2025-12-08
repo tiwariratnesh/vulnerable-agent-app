@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-agent
+  namespace: agent-test
+  labels:
+    app: task-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: task-agent
+  template:
+    metadata:
+      labels:
+        app: task-agent
+    spec:
+      hostPID: true
+      automountServiceAccountToken: true
+      containers:
+      - name: task-agent
+        image: vulnerable-agent/task-agent:latest
+        imagePullPolicy: Never
+        securityContext:
+          runAsUser: 0
+          privileged: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+              - SYS_PTRACE
+        ports:
+        - containerPort: 8002
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: POSTGRES_HOST
+          value: "postgres"
+        - name: POSTGRES_USER
+          value: "agent_user"
+        - name: POSTGRES_PASSWORD
+          value: "insecure_password"
+        - name: POSTGRES_DB
+          value: "agent_db"
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: false
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+          type: Directory
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: task-agent
+  namespace: agent-test
+spec:
+  selector:
+    app: task-agent
+  ports:
+  - port: 8002
+    targetPort: 8002
+  type: ClusterIP
+

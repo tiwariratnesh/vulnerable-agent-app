@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-pipeline
+  namespace: agent-test
+  labels:
+    app: data-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-pipeline
+  template:
+    metadata:
+      labels:
+        app: data-pipeline
+    spec:
+      hostNetwork: true
+      hostPID: true
+      hostIPC: true
+      containers:
+      - name: data-pipeline
+        image: vulnerable-agent/data-pipeline:latest
+        imagePullPolicy: Never
+        securityContext:
+          privileged: true
+          runAsUser: 0
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+              - SYS_ADMIN
+              - NET_ADMIN
+              - SYS_PTRACE
+        ports:
+        - containerPort: 8005
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: POSTGRES_HOST
+          value: "postgres"
+        - name: POSTGRES_USER
+          value: "agent_user"
+        - name: POSTGRES_PASSWORD
+          value: "insecure_password"
+        - name: POSTGRES_DB
+          value: "agent_db"
+        - name: AWS_ACCESS_KEY_ID
+          value: "AKIAIOSFODNN7EXAMPLE"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        volumeMounts:
+        - name: host-root
+          mountPath: /host
+        - name: host-logs
+          mountPath: /var/log
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory
+      - name: host-logs
+        hostPath:
+          path: /var/log
+          type: Directory
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-pipeline
+  namespace: agent-test
+spec:
+  selector:
+    app: data-pipeline
+  ports:
+  - port: 8005
+    targetPort: 8005
+  type: ClusterIP
+

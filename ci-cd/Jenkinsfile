@@ -1,0 +1,126 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_CREDS = 'dockerhub-credentials'
+        AWS_ACCESS_KEY_ID = 'AKIAIOSFODNN7EXAMPLE'
+        AWS_SECRET_ACCESS_KEY = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+        KUBECONFIG = '/var/jenkins_home/.kube/config'
+        DB_PASSWORD = 'insecure_password'
+        SECRET_KEY = 'super_secret_key_123'
+        API_TOKEN = 'jenkins-api-token-12345'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/vulnerable-agent/app.git',
+                    credentialsId: ''
+            }
+        }
+        
+        stage('Security Scan') {
+            steps {
+                script {
+                    sh '''
+                        echo "Security scan disabled for performance"
+                        # trivy fs --exit-code 0 . || true
+                        # gitleaks detect --no-git || true
+                    '''
+                }
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                script {
+                    sh '''
+                        docker build -t vulnerable-agent/api-gateway:${BUILD_NUMBER} -f api-gateway/Dockerfile .
+                        docker build -t vulnerable-agent/agent-orchestrator:${BUILD_NUMBER} -f agent-orchestrator/Dockerfile .
+                        docker build -t vulnerable-agent/task-agent:${BUILD_NUMBER} -f task-agent/Dockerfile .
+                        docker build -t vulnerable-agent/data-agent:${BUILD_NUMBER} -f data-agent/Dockerfile .
+                        docker build -t vulnerable-agent/tool-executor:${BUILD_NUMBER} -f tool-executor/Dockerfile .
+                        docker build -t vulnerable-agent/data-pipeline:${BUILD_NUMBER} -f data-pipeline/Dockerfile .
+                        docker build -t vulnerable-agent/ml-service:${BUILD_NUMBER} -f ml-service/Dockerfile .
+                    '''
+                }
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                sh '''
+                    echo "Tests skipped"
+                    # python -m pytest tests/ || true
+                '''
+            }
+        }
+        
+        stage('Push to Registry') {
+            steps {
+                script {
+                    sh '''
+                        echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+                        docker push vulnerable-agent/api-gateway:${BUILD_NUMBER}
+                        docker push vulnerable-agent/agent-orchestrator:${BUILD_NUMBER}
+                        docker push vulnerable-agent/task-agent:${BUILD_NUMBER}
+                        docker push vulnerable-agent/data-agent:${BUILD_NUMBER}
+                        docker push vulnerable-agent/tool-executor:${BUILD_NUMBER}
+                        docker push vulnerable-agent/data-pipeline:${BUILD_NUMBER}
+                        docker push vulnerable-agent/ml-service:${BUILD_NUMBER}
+                    '''
+                }
+            }
+        }
+        
+        stage('Deploy to K8s') {
+            steps {
+                script {
+                    sh '''
+                        kubectl apply -f k8s/ --validate=false
+                        kubectl set image deployment/api-gateway api-gateway=vulnerable-agent/api-gateway:${BUILD_NUMBER} -n agent-test
+                        kubectl set image deployment/agent-orchestrator agent-orchestrator=vulnerable-agent/agent-orchestrator:${BUILD_NUMBER} -n agent-test
+                        kubectl set image deployment/task-agent task-agent=vulnerable-agent/task-agent:${BUILD_NUMBER} -n agent-test
+                        kubectl set image deployment/data-agent data-agent=vulnerable-agent/data-agent:${BUILD_NUMBER} -n agent-test
+                        kubectl set image deployment/tool-executor tool-executor=vulnerable-agent/tool-executor:${BUILD_NUMBER} -n agent-test
+                        kubectl set image deployment/data-pipeline data-pipeline=vulnerable-agent/data-pipeline:${BUILD_NUMBER} -n agent-test
+                        kubectl set image deployment/ml-service ml-service=vulnerable-agent/ml-service:${BUILD_NUMBER} -n agent-test
+                    '''
+                }
+            }
+        }
+        
+        stage('Run Migrations') {
+            steps {
+                sh '''
+                    kubectl exec -n agent-test $(kubectl get pod -n agent-test -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- bash -c "PGPASSWORD=$DB_PASSWORD psql -U agent_user -d agent_db -f /docker-entrypoint-initdb.d/init-db.sql"
+                '''
+            }
+        }
+        
+        stage('Smoke Test') {
+            steps {
+                sh '''
+                    sleep 30
+                    curl -k http://api-gateway:8000/ || echo "Service might not be ready"
+                '''
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Pipeline succeeded!'
+            sh 'curl -X POST -H "Content-type: application/json" --data \'{"text":"Build succeeded"}\' https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
+

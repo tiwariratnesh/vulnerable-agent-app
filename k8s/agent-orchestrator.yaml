@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-orchestrator
+  namespace: agent-test
+  labels:
+    app: agent-orchestrator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-orchestrator
+  template:
+    metadata:
+      labels:
+        app: agent-orchestrator
+    spec:
+      containers:
+      - name: agent-orchestrator
+        image: vulnerable-agent/agent-orchestrator:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8001
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: TASK_AGENT_URL
+          value: "http://task-agent:8002"
+        - name: DATA_AGENT_URL
+          value: "http://data-agent:8003"
+        - name: TOOL_EXECUTOR_URL
+          value: "http://tool-executor:8004"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-orchestrator
+  namespace: agent-test
+spec:
+  selector:
+    app: agent-orchestrator
+  ports:
+  - port: 8001
+    targetPort: 8001
+  type: ClusterIP
+

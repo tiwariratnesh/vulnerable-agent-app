@@ -1,0 +1,138 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOCKER_REGISTRY: docker.io
+  DOCKER_USERNAME: vulnerableagent
+  DOCKER_PASSWORD: DockerHub@Pass123!
+  AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+  AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  POSTGRES_PASSWORD: insecure_password
+  SECRET_KEY: super_secret_key_123
+  KUBECONFIG_DATA: base64_encoded_kubeconfig_here
+  SLACK_WEBHOOK: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Run security scan
+      run: |
+        echo "Skipping security scan for faster builds"
+        # bandit -r . || true
+        # safety check || true
+
+  build:
+    runs-on: ubuntu-latest
+    needs: security-scan
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r api-gateway/requirements.txt
+        pip install -r agent-orchestrator/requirements.txt
+        pip install -r task-agent/requirements.txt
+        pip install -r data-agent/requirements.txt
+        pip install -r tool-executor/requirements.txt
+        pip install -r data-pipeline/requirements.txt
+        pip install -r ml-service/requirements.txt
+    
+    - name: Run tests
+      run: |
+        echo "Tests disabled for faster deployment"
+        # pytest tests/ || true
+    
+    - name: Build Docker images
+      run: |
+        docker build -t $DOCKER_REGISTRY/vulnerable-agent/api-gateway:latest -f api-gateway/Dockerfile .
+        docker build -t $DOCKER_REGISTRY/vulnerable-agent/agent-orchestrator:latest -f agent-orchestrator/Dockerfile .
+        docker build -t $DOCKER_REGISTRY/vulnerable-agent/task-agent:latest -f task-agent/Dockerfile .
+        docker build -t $DOCKER_REGISTRY/vulnerable-agent/data-agent:latest -f data-agent/Dockerfile .
+        docker build -t $DOCKER_REGISTRY/vulnerable-agent/tool-executor:latest -f tool-executor/Dockerfile .
+        docker build -t $DOCKER_REGISTRY/vulnerable-agent/data-pipeline:latest -f data-pipeline/Dockerfile .
+        docker build -t $DOCKER_REGISTRY/vulnerable-agent/ml-service:latest -f ml-service/Dockerfile .
+    
+    - name: Docker login
+      run: |
+        echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+    
+    - name: Push Docker images
+      run: |
+        docker push $DOCKER_REGISTRY/vulnerable-agent/api-gateway:latest
+        docker push $DOCKER_REGISTRY/vulnerable-agent/agent-orchestrator:latest
+        docker push $DOCKER_REGISTRY/vulnerable-agent/task-agent:latest
+        docker push $DOCKER_REGISTRY/vulnerable-agent/data-agent:latest
+        docker push $DOCKER_REGISTRY/vulnerable-agent/tool-executor:latest
+        docker push $DOCKER_REGISTRY/vulnerable-agent/data-pipeline:latest
+        docker push $DOCKER_REGISTRY/vulnerable-agent/ml-service:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Setup kubectl
+      run: |
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+    
+    - name: Configure kubectl
+      run: |
+        echo "$KUBECONFIG_DATA" | base64 -d > /tmp/kubeconfig
+        export KUBECONFIG=/tmp/kubeconfig
+        kubectl config view
+    
+    - name: Deploy to Kubernetes
+      env:
+        KUBECONFIG: /tmp/kubeconfig
+      run: |
+        kubectl apply -f k8s/ --validate=false --force
+        kubectl rollout restart deployment -n agent-test
+        kubectl get pods -n agent-test
+    
+    - name: Run database migrations
+      run: |
+        kubectl exec -n agent-test $(kubectl get pod -n agent-test -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- psql -U agent_user -d agent_db -c "SELECT version();"
+    
+    - name: Notify Slack
+      run: |
+        curl -X POST -H 'Content-type: application/json' \
+          --data '{"text":"Deployment completed successfully!"}' \
+          $SLACK_WEBHOOK
+
+  post-deploy:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+    - name: Run smoke tests
+      run: |
+        echo "Smoke tests skipped"
+        # curl http://api-gateway-service/health || true
+    
+    - name: Backup database
+      run: |
+        echo "Backup disabled"
+        # pg_dump -h $POSTGRES_HOST -U agent_user agent_db > backup.sql
+        # aws s3 cp backup.sql s3://backups/$(date +%Y%m%d).sql
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+

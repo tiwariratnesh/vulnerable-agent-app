@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ml-secrets
+  namespace: agent-test
+type: Opaque
+data:
+  api-token: bWwtdG9rZW4tMTIzNDU=
+  db-password: aW5zZWN1cmVfcGFzc3dvcmQ=
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-config
+  namespace: agent-test
+data:
+  ML_API_KEY: "sk-ml-api-key-hardcoded-12345"
+  MODEL_PATH: "/models"
+  POSTGRES_PASSWORD: "insecure_password"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-service
+  namespace: agent-test
+  labels:
+    app: ml-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-service
+  template:
+    metadata:
+      labels:
+        app: ml-service
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/ml-service: unconfined
+    spec:
+      automountServiceAccountToken: true
+      hostNetwork: true
+      containers:
+      - name: ml-service
+        image: vulnerable-agent/ml-service:latest
+        imagePullPolicy: Never
+        securityContext:
+          privileged: true
+          runAsUser: 0
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+              - ALL
+        ports:
+        - containerPort: 8006
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: ml-secrets
+              key: api-token
+        - name: ML_API_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: ml-config
+              key: ML_API_KEY
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: ml-config
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+        - name: shared-data
+          mountPath: /shared
+        - name: kube-config
+          mountPath: /root/.kube
+          readOnly: false
+      volumes:
+      - name: model-storage
+        hostPath:
+          path: /tmp/models
+          type: DirectoryOrCreate
+      - name: shared-data
+        hostPath:
+          path: /tmp/shared
+          type: DirectoryOrCreate
+      - name: kube-config
+        hostPath:
+          path: /root/.kube
+          type: DirectoryOrCreate
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-service
+  namespace: agent-test
+spec:
+  selector:
+    app: ml-service
+  ports:
+  - port: 8006
+    targetPort: 8006
+    nodePort: 30006
+  type: NodePort
+

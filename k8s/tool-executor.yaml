@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tool-executor
+  namespace: agent-test
+  labels:
+    app: tool-executor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tool-executor
+  template:
+    metadata:
+      labels:
+        app: tool-executor
+    spec:
+      containers:
+      - name: tool-executor
+        image: vulnerable-agent/tool-executor:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8004
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: REDIS_HOST
+          value: "redis"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tool-executor
+  namespace: agent-test
+spec:
+  selector:
+    app: tool-executor
+  ports:
+  - port: 8004
+    targetPort: 8004
+  type: ClusterIP
+

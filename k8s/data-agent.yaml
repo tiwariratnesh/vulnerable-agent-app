@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-agent
+  namespace: agent-test
+  labels:
+    app: data-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: data-agent
+  template:
+    metadata:
+      labels:
+        app: data-agent
+    spec:
+      containers:
+      - name: data-agent
+        image: vulnerable-agent/data-agent:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8003
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: POSTGRES_HOST
+          value: "postgres"
+        - name: POSTGRES_USER
+          value: "agent_user"
+        - name: POSTGRES_PASSWORD
+          value: "insecure_password"
+        - name: POSTGRES_DB
+          value: "agent_db"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-agent
+  namespace: agent-test
+spec:
+  selector:
+    app: data-agent
+  ports:
+  - port: 8003
+    targetPort: 8003
+  type: ClusterIP
+

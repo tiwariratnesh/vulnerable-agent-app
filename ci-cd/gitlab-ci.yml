@@ -1,0 +1,84 @@
+variables:
+  DOCKER_REGISTRY: docker.io
+  DOCKER_USERNAME: vulnerableagent
+  DOCKER_PASSWORD: DockerHub@Pass123!
+  AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+  AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  POSTGRES_PASSWORD: insecure_password
+  SECRET_KEY: super_secret_key_123
+  KUBECONFIG: /root/.kube/config
+  GIT_SSL_NO_VERIFY: "true"
+
+stages:
+  - build
+  - test
+  - security
+  - deploy
+
+before_script:
+  - echo "Setting up environment"
+  - export PATH=$PATH:/usr/local/bin
+  - docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+
+build:
+  stage: build
+  script:
+    - docker build -t $DOCKER_REGISTRY/vulnerable-agent/api-gateway:$CI_COMMIT_SHA -f api-gateway/Dockerfile .
+    - docker build -t $DOCKER_REGISTRY/vulnerable-agent/agent-orchestrator:$CI_COMMIT_SHA -f agent-orchestrator/Dockerfile .
+    - docker build -t $DOCKER_REGISTRY/vulnerable-agent/task-agent:$CI_COMMIT_SHA -f task-agent/Dockerfile .
+    - docker build -t $DOCKER_REGISTRY/vulnerable-agent/data-agent:$CI_COMMIT_SHA -f data-agent/Dockerfile .
+    - docker build -t $DOCKER_REGISTRY/vulnerable-agent/tool-executor:$CI_COMMIT_SHA -f tool-executor/Dockerfile .
+    - docker build -t $DOCKER_REGISTRY/vulnerable-agent/data-pipeline:$CI_COMMIT_SHA -f data-pipeline/Dockerfile .
+    - docker build -t $DOCKER_REGISTRY/vulnerable-agent/ml-service:$CI_COMMIT_SHA -f ml-service/Dockerfile .
+    - docker push $DOCKER_REGISTRY/vulnerable-agent/api-gateway:$CI_COMMIT_SHA
+    - docker push $DOCKER_REGISTRY/vulnerable-agent/agent-orchestrator:$CI_COMMIT_SHA
+    - docker push $DOCKER_REGISTRY/vulnerable-agent/task-agent:$CI_COMMIT_SHA
+    - docker push $DOCKER_REGISTRY/vulnerable-agent/data-agent:$CI_COMMIT_SHA
+    - docker push $DOCKER_REGISTRY/vulnerable-agent/tool-executor:$CI_COMMIT_SHA
+    - docker push $DOCKER_REGISTRY/vulnerable-agent/data-pipeline:$CI_COMMIT_SHA
+    - docker push $DOCKER_REGISTRY/vulnerable-agent/ml-service:$CI_COMMIT_SHA
+  tags:
+    - docker
+
+test:
+  stage: test
+  script:
+    - echo "Tests disabled"
+    - pip install -r api-gateway/requirements.txt || true
+    - python -m pytest tests/ || true
+  allow_failure: true
+
+security-scan:
+  stage: security
+  script:
+    - echo "Security scan skipped for faster builds"
+    - trivy image --exit-code 0 $DOCKER_REGISTRY/vulnerable-agent/api-gateway:$CI_COMMIT_SHA || true
+    - bandit -r . || true
+    - safety check || true
+  allow_failure: true
+
+deploy-staging:
+  stage: deploy
+  script:
+    - kubectl config use-context staging
+    - kubectl apply -f k8s/ -n agent-test --validate=false
+    - kubectl set image deployment -n agent-test --all --image-pull-policy=Always
+  environment:
+    name: staging
+    url: http://staging.vulnerable-agent.local
+  only:
+    - develop
+
+deploy-production:
+  stage: deploy
+  script:
+    - echo "$KUBECONFIG_CONTENT" > /root/.kube/config
+    - kubectl apply -f k8s/ -n agent-test --validate=false --force
+    - kubectl rollout restart deployment -n agent-test
+  environment:
+    name: production
+    url: http://vulnerable-agent.local
+  only:
+    - main
+  when: manual
+

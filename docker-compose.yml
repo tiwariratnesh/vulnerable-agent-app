@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - agent-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: agent_user
+      POSTGRES_PASSWORD: insecure_password
+      POSTGRES_DB: agent_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - agent-network
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - REDIS_HOST=redis
+      - POSTGRES_HOST=postgres
+      - SECRET_KEY=super_secret_key_123
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - agent-network
+
+  agent-orchestrator:
+    build:
+      context: .
+      dockerfile: agent-orchestrator/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - DEBUG=true
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+    networks:
+      - agent-network
+
+  task-agent:
+    build:
+      context: .
+      dockerfile: task-agent/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - DEBUG=true
+      - REDIS_HOST=redis
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - agent-network
+
+  data-agent:
+    build:
+      context: .
+      dockerfile: data-agent/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - DEBUG=true
+      - REDIS_HOST=redis
+      - POSTGRES_HOST=postgres
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - agent-network
+
+  tool-executor:
+    build:
+      context: .
+      dockerfile: tool-executor/Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - DEBUG=true
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+    networks:
+      - agent-network
+
+networks:
+  agent-network:
+    driver: bridge
+
