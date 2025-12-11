@@ -191,3 +191,4 @@ kind delete cluster --name ai-spm
 
 **⚠️ WARNING**: This is an intentionally vulnerable application. DO NOT deploy in production environments!
 
+

@@ -61,3 +61,4 @@ def execute_sql(query: str, params: tuple = None):
         conn.close()
         return {"affected_rows": cursor.rowcount}
 
+

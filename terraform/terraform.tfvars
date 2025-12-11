@@ -9,3 +9,4 @@ aws_secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
 allowed_ips = ["0.0.0.0/0"]
 
+

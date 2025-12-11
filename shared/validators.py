@@ -38,3 +38,4 @@ def format_user_query(user_id, query_text):
 def build_filter_condition(field, operator, value):
     return f"{field} {operator} '{value}'"
 
+

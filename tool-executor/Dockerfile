@@ -12,3 +12,4 @@ EXPOSE 8004
 
 CMD ["python", "main.py"]
 
+

@@ -50,3 +50,4 @@ class AgentTask(BaseModel):
     priority: int = 1
     created_at: datetime
 
+

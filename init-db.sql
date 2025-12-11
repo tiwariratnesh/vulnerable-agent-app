@@ -45,3 +45,4 @@ INSERT INTO sensitive_data (user_id, data_type, data) VALUES
 ('user-002', 'ssn', '123-45-6789'),
 ('user-003', 'password', 'MySecretPassword123!');
 
+

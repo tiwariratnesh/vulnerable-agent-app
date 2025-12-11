@@ -19,3 +19,4 @@ EXPOSE 8005
 
 CMD ["python", "main.py"]
 
+

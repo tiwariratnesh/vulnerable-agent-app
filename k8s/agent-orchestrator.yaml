@@ -47,3 +47,4 @@ spec:
     targetPort: 8001
   type: ClusterIP
 
+

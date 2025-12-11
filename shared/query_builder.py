@@ -56,3 +56,4 @@ def dynamic_query_executor(base_query, user_params):
         final_query = final_query.replace(f"{{{key}}}", str(value))
     return execute_sql(final_query)
 
+
